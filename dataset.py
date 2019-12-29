@@ -12,7 +12,7 @@ class SimpleDataset(Dataset):
     ID_COL_NAME = "Id"
     PREDICT_COL_NAME = "Task 2"
     TRAIN_COL = [col.lower() for col in [ID_COL_NAME, "Abstract", PREDICT_COL_NAME]]
-    CLASS = ("ENGINEERING", "EMPIRICAL", "THEORETICAL", "OTHERS",)
+    CLASS = ("THEORETICAL", "ENGINEERING", "EMPIRICAL",)
 
     def __init__(self, data_path, train=False, reduce_data_rate=1, worker=cpu_count() - 2):
         assert 0 < reduce_data_rate <= 1
@@ -89,14 +89,14 @@ class SimpleDataset(Dataset):
         for row in tqdm(new_dataset.iterrows(), total=new_dataset.shape[0], desc=f"Tokenizing", ncols=70):
             row = row[1]
             data = dict()
-            data[cls.ID_COL_NAME] = row[cls.ID_COL_NAME]
-            # data["Title"] = " ".join(cls.restore_word([word for word in row["Title"].split() if re.match(r"[a-z]+", word)]))
-            # data["Title"] = cls.bert_tokenizer([data["Title"]], tokenizer)
-            data["Abstract"] = [" ".join(cls.restore_word([word for word in sentence.split() if re.match(r"[a-z]+", word)])) for sentence in row["Abstract"].split("$$$")[:6]]
-            # data["Abstract"] = [sentence for sentence in row["Abstract"].split("$$$")[:6]]
-            data["Abstract"] = cls.bert_tokenizer(data["Abstract"], tokenizer)
             if train:
+                if "OTHERS" in row[cls.PREDICT_COL_NAME].upper():
+                    continue
                 data[cls.PREDICT_COL_NAME] = torch.tensor([1 if _class in row[cls.PREDICT_COL_NAME].upper() else 0 for _class in cls.CLASS], dtype=torch.float)
+            data[cls.ID_COL_NAME] = row[cls.ID_COL_NAME]
+            data["Abstract"] = [" ".join(cls.restore_word([word for word in sentence.split() if re.match(r"[a-z]+", word)])) for sentence in row["Abstract"].split("$$$")[:6]]
+            data["Abstract"] = cls.bert_tokenizer(data["Abstract"], tokenizer)
+
             datas.append(data)
 
         return datas

@@ -1,2 +1,4 @@
 *.pt
 *.csv
+.idea/
+__pycache__/
