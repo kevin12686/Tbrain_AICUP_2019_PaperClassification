@@ -83,19 +83,20 @@ def run_epoch(model, dataloader, optimizer, criterion):
 
     print(f"""
 Loss_Avg: {running_loss / len(trainloader)}
-Train_F1: {f1_train}
-Test_F1: {f1_test}
-""")
+Train F1: {f1_train}
+Test F1: {f1_test}""")
     return f1_train, f1_test
 
 
 if __name__ == '__main__':
     BATCH_SIZE = 8
-    EPOCHS = 5
+    EPOCHS = 20
     NUM_LABELS = 3
-    MODEL_NAME = "Bert_lr1e-6"
+    DROPOUT = 0.1
+    PRETRAINED = "bert-base-uncased"
+    MODEL_NAME = "Bert(large)_lr5e-6(.5-5)"
 
-    dataset = SimpleDataset("task2_trainset.csv", train=True)
+    dataset = SimpleDataset("task2_trainset.csv", PRETRAINED, train=True, reduce_data_rate=0.1)
 
     test_size = int(len(dataset) * 0.1)
     train_size = len(dataset) - test_size
@@ -103,14 +104,15 @@ if __name__ == '__main__':
     trainloader = DataLoader(traindata, batch_size=BATCH_SIZE, shuffle=True, collate_fn=train_mini_batch)
     testloader = DataLoader(testdata, batch_size=BATCH_SIZE, collate_fn=train_mini_batch)
     model = SequenceClassification.from_pretrained("bert-large-uncased", num_labels=NUM_LABELS)
+    model.config.hidden_dropout_prob = DROPOUT
 
     # training
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    model = model.to(device)
+    model.to(device)
     criterion = torch.nn.BCEWithLogitsLoss()
     for ep in range(EPOCHS):
         print(f"\n[ Epoch {ep + 1}/{EPOCHS} ]")
-        optimizer = torch.optim.Adam(model.parameters(), lr=1e-6 * (0.1 ** (ep // 10)))
+        optimizer = torch.optim.Adam(model.parameters(), lr=5e-6 * (0.5 ** (ep // 5)))
         train_acc, test_acc = run_epoch(model, trainloader, optimizer, criterion)
 
         if ep > 1:
@@ -118,11 +120,8 @@ if __name__ == '__main__':
                 os.mkdir(os.path.join(BASE_DIR, MODEL_NAME))
             if not os.path.exists(os.path.join(BASE_DIR, MODEL_NAME, f"ep{ep + 1}")):
                 os.mkdir(os.path.join(BASE_DIR, MODEL_NAME, f"ep{ep + 1}"))
-            model.save_pretrained(os.path.join(BASE_DIR, MODEL_NAME, f"ep{ep + 1}]"))
+            model.save_pretrained(os.path.join(BASE_DIR, MODEL_NAME, f"ep{ep + 1}"))
             with open(os.path.join(BASE_DIR, MODEL_NAME, f"ep{ep + 1}", "acc.txt"), "w") as f:
-                f.write("""
-Train_F1: {train_acc}
-Test_F1: {test_acc}
-""")
-            print(f"{'#' * 5} Model saved {'#' * 5}")
-
+                f.write(f"Train_F1: {train_acc}\nTest_F1: {test_acc}")
+            print(f"\n{'#' * 5} Model saved {'#' * 5}")
+    print("Done.")

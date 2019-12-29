@@ -14,11 +14,12 @@ class SimpleDataset(Dataset):
     TRAIN_COL = [col.lower() for col in [ID_COL_NAME, "Abstract", PREDICT_COL_NAME]]
     CLASS = ("THEORETICAL", "ENGINEERING", "EMPIRICAL",)
 
-    def __init__(self, data_path, train=False, reduce_data_rate=1, worker=cpu_count() - 2):
+    def __init__(self, data_path, pretrained, train=False, reduce_data_rate=1, worker=cpu_count() - 2):
         assert 0 < reduce_data_rate <= 1
 
         super().__init__()
         self.train = train
+        self.pretrained = pretrained
 
         # Worker Preprocess
         self.dataset = list()
@@ -37,7 +38,7 @@ class SimpleDataset(Dataset):
         with Pool(processes=worker) as pool:
             result_list = list()
             for i in range(worker):
-                result_list.append(pool.apply_async(self.preprocess, (split_dataset[i], self.train,)))
+                result_list.append(pool.apply_async(self.preprocess, (split_dataset[i], self.pretrained, self.train,)))
             for i in range(worker):
                 self.dataset += result_list[i].get()
 
@@ -66,7 +67,7 @@ class SimpleDataset(Dataset):
         return new_words
 
     @classmethod
-    def preprocess(cls, dataset, train=False):
+    def preprocess(cls, dataset, pretrained, train=False):
         new_dataset = pd.DataFrame()
 
         # Remove useless columns
@@ -85,7 +86,7 @@ class SimpleDataset(Dataset):
 
         # Tokenizer
         datas = list()
-        tokenizer = BertTokenizer.from_pretrained("bert-large-uncased")
+        tokenizer = BertTokenizer.from_pretrained(pretrained)
         for row in tqdm(new_dataset.iterrows(), total=new_dataset.shape[0], desc=f"Tokenizing", ncols=70):
             row = row[1]
             data = dict()

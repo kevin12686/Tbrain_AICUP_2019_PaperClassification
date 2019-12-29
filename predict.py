@@ -52,10 +52,14 @@ def prepare_submit(ids, flags):
 if __name__ == '__main__':
     NUM_LABELS = 3
     BATCH_SIZE = 8
+    DROPOUT = 0.1
+    PRETRAINED = "bert-large-uncased"
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    dataset = SimpleDataset("task2_public_testset.csv")
+    dataset = SimpleDataset("task2_public_testset.csv", PRETRAINED)
     loader = DataLoader(dataset, BATCH_SIZE, collate_fn=predict_mini_batch)
-    model = SequenceClassification.from_pretrained("save\\Bert_lr1e-6\\ep5")
+    model = SequenceClassification.from_pretrained("save\\xlnet(large)_lr1e-6\\ep10")
+    model.config.hidden_dropout_prob = DROPOUT
+
     model.to(device)
     ids, flags = predictions(model, loader, device)
     prepare_submit(ids, flags)
