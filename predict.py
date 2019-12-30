@@ -26,7 +26,7 @@ def predict_mini_batch(samples):
     return tokens_tensors, segments_tokens, masks_tensors, ids
 
 
-def predictions(model, dataloader, device, threshold=0.4):
+def predictions(model, dataloader, device, threshold=[0.4, 0.4, 0.4]):
     id_list = list()
     flag_list = list()
     model.eval()
@@ -36,9 +36,13 @@ def predictions(model, dataloader, device, threshold=0.4):
             ids = data[-1]
             outputs = model(input_ids=tokens_tensors, token_type_ids=segments_tokens, attention_mask=masks_tensors)
             logits = torch.sigmoid(outputs)
-            logits = (logits > threshold) * 1.0
             id_list += ids
-            flag_list += logits.cpu().numpy().astype(np.int).tolist()
+            flag_list += logits.cpu().numpy().tolist()
+        flag_list = np.array(flag_list)
+        flag_list[:, 0] = (flag_list[:, 0] > threshold[0])
+        flag_list[:, 1] = (flag_list[:, 1] > threshold[1])
+        flag_list[:, 2] = (flag_list[:, 2] > threshold[2])
+        flag_list = flag_list.astype(np.int).tolist()
     return id_list, flag_list
 
 
@@ -52,15 +56,13 @@ def prepare_submit(ids, flags):
 if __name__ == '__main__':
     NUM_LABELS = 3
     BATCH_SIZE = 8
-    DROPOUT = 0.1
     PRETRAINED = "bert-large-uncased"
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    dataset = SimpleDataset("task2_public_testset.csv", PRETRAINED)
-    loader = DataLoader(dataset, BATCH_SIZE, collate_fn=predict_mini_batch)
-    model = SequenceClassification.from_pretrained("save\\xlnet(large)_lr1e-6\\ep10")
-    model.config.hidden_dropout_prob = DROPOUT
+    dataset = SimpleDataset("task2_final_testset.csv", PRETRAINED, worker=7)
+    loader = DataLoader(dataset, BATCH_SIZE, collate_fn=predict_mini_batch, num_workers=4)
+    model = SequenceClassification.from_pretrained("save\\Bert(base_large)_lr1e-6(.5-5)d310TH\\ep5")
 
     model.to(device)
-    ids, flags = predictions(model, loader, device)
+    ids, flags = predictions(model, loader, device, threshold=[0.32, 0.3, 0.36])
     prepare_submit(ids, flags)
     print("Done.")

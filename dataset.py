@@ -95,7 +95,8 @@ class SimpleDataset(Dataset):
                     continue
                 data[cls.PREDICT_COL_NAME] = torch.tensor([1 if _class in row[cls.PREDICT_COL_NAME].upper() else 0 for _class in cls.CLASS], dtype=torch.float)
             data[cls.ID_COL_NAME] = row[cls.ID_COL_NAME]
-            data["Abstract"] = [" ".join(cls.restore_word([word for word in sentence.split() if re.match(r"[a-z]+", word)])) for sentence in row["Abstract"].split("$$$")[:6]]
+            sentences = [sentence for sentence in row["Abstract"].split("$$$")[:10]]
+            data["Abstract"] = [" ".join(cls.restore_word([word for word in sentence.split() if re.match(r"[a-z\-\']+", word)])) for sentence in sentences]
             data["Abstract"] = cls.bert_tokenizer(data["Abstract"], tokenizer)
 
             datas.append(data)

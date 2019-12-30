@@ -34,7 +34,7 @@ def train_mini_batch(samples):
         return tokens_tensors, segments_tokens, masks_tensors, torch.stack(labels, 0)
 
 
-def f1_score(logits, labels):
+def f1_score(logits, labels, ep=1e-8):
     label_num = len(labels[0])
     TP = 0
     FP = 0
@@ -47,12 +47,12 @@ def f1_score(logits, labels):
                 FP += 1
             elif logits[i][j] == 0 and labels[i][j] == 1:
                 FN += 1
-    precision = TP / (TP + FP)
-    recall = TP / (TP + FN)
-    return 2 * precision * recall / (precision + recall)
+    precision = TP / (TP + FP + ep)
+    recall = TP / (TP + FN + ep)
+    return 2 * precision * recall / (precision + recall + ep)
 
 
-def evaluate(model, dataloader, device, threshold=0.4, value=False):
+def evaluate(model, dataloader, device, threshold=[0.4, 0.4, 0.4], myrange=None):
     outputs_ = list()
     labels_ = list()
     model.eval()
@@ -61,10 +61,31 @@ def evaluate(model, dataloader, device, threshold=0.4, value=False):
             tokens_tensors, segments_tokens, masks_tensors, labels = [t.to(device) for t in data]
             outputs = model(input_ids=tokens_tensors, token_type_ids=segments_tokens, attention_mask=masks_tensors)
             logits = torch.sigmoid(outputs)
-            logits = (logits > threshold) * 1.0
-            outputs_ += logits.cpu().numpy().astype(np.int).tolist()
+            outputs_ += logits.cpu().numpy().tolist()
             labels_ += labels.cpu().numpy().astype(np.int).tolist()
-    return f1_score(outputs_, labels_)
+        outputs_ = np.array(outputs_)
+        if myrange is not None:
+            best_threshold = [None, None, None]
+            score = 0
+            for t1 in tqdm(np.arange(myrange[0], myrange[1], myrange[2]), ncols=70, desc=f"Threshold"):
+                for t2 in np.arange(myrange[0], myrange[1], myrange[2]):
+                    for t3 in np.arange(myrange[0], myrange[1], myrange[2]):
+                        t1, t2, t3 = np.round(t1, 2), np.round(t2, 2), np.round(t3, 2)
+                        bool_matrix = np.zeros(outputs_.shape)
+                        bool_matrix[:, 0] = (outputs_[:, 0] > t1).astype(np.int)
+                        bool_matrix[:, 1] = (outputs_[:, 1] > t2).astype(np.int)
+                        bool_matrix[:, 2] = (outputs_[:, 2] > t3).astype(np.int)
+                        t_outputs_ = bool_matrix.tolist()
+                        t_score = f1_score(t_outputs_, labels_)
+                        if t_score > score:
+                            best_threshold = [t1, t2, t3]
+                            score = t_score
+            return score, best_threshold
+        else:
+            outputs_[:, 0] = (outputs_[:, 0] > threshold[0]).astype(np.int)
+            outputs_[:, 1] = (outputs_[:, 1] > threshold[1]).astype(np.int)
+            outputs_[:, 2] = (outputs_[:, 2] > threshold[2]).astype(np.int)
+            return f1_score(outputs_.tolist(), labels_)
 
 
 def run_epoch(model, dataloader, optimizer, criterion):
@@ -78,25 +99,26 @@ def run_epoch(model, dataloader, optimizer, criterion):
         running_loss += loss
         loss.backward()
         optimizer.step()
-    f1_train = evaluate(model, trainloader, device)
-    f1_test = evaluate(model, testloader, device)
+    f1_test, best_TH = evaluate(model, testloader, device, myrange=(0.4, 0.61, 0.01,))
+    f1_train = evaluate(model, trainloader, device, threshold=best_TH)
 
     print(f"""
 Loss_Avg: {running_loss / len(trainloader)}
 Train F1: {f1_train}
-Test F1: {f1_test}""")
-    return f1_train, f1_test
+Test F1: {f1_test}
+Best Threshold: {best_TH}""")
+    return f1_train, f1_test, best_TH
 
 
 if __name__ == '__main__':
     BATCH_SIZE = 8
-    EPOCHS = 20
+    EPOCHS = 8
     NUM_LABELS = 3
-    DROPOUT = 0.1
+    DROPOUT = 0.3
     PRETRAINED = "bert-base-uncased"
-    MODEL_NAME = "Bert(large)_lr5e-6(.5-5)"
+    MODEL_NAME = "Bert(base_large)_lr1e-6(.5-5)d310TH"
 
-    dataset = SimpleDataset("task2_trainset.csv", PRETRAINED, train=True, reduce_data_rate=0.1)
+    dataset = SimpleDataset("task2_trainset.csv", PRETRAINED, train=True)
 
     test_size = int(len(dataset) * 0.1)
     train_size = len(dataset) - test_size
@@ -112,8 +134,8 @@ if __name__ == '__main__':
     criterion = torch.nn.BCEWithLogitsLoss()
     for ep in range(EPOCHS):
         print(f"\n[ Epoch {ep + 1}/{EPOCHS} ]")
-        optimizer = torch.optim.Adam(model.parameters(), lr=5e-6 * (0.5 ** (ep // 5)))
-        train_acc, test_acc = run_epoch(model, trainloader, optimizer, criterion)
+        optimizer = torch.optim.Adam(model.parameters(), lr=1e-6 * (0.5 ** (ep // 5)))
+        train_acc, test_acc, best_TH = run_epoch(model, trainloader, optimizer, criterion)
 
         if ep > 1:
             if not os.path.exists(os.path.join(BASE_DIR, MODEL_NAME)):
@@ -122,6 +144,6 @@ if __name__ == '__main__':
                 os.mkdir(os.path.join(BASE_DIR, MODEL_NAME, f"ep{ep + 1}"))
             model.save_pretrained(os.path.join(BASE_DIR, MODEL_NAME, f"ep{ep + 1}"))
             with open(os.path.join(BASE_DIR, MODEL_NAME, f"ep{ep + 1}", "acc.txt"), "w") as f:
-                f.write(f"Train_F1: {train_acc}\nTest_F1: {test_acc}")
+                f.write(f"Train_F1: {train_acc}\nTest_F1: {test_acc}\nBest Threshold: {best_TH}")
             print(f"\n{'#' * 5} Model saved {'#' * 5}")
     print("Done.")
